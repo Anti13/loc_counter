@@ -160,4 +160,75 @@ mod tests {
         assert!(rendered.contains("Total"));
         assert!(rendered.contains("150"));
     }
+
+    #[test]
+    fn report_with_empty_result_is_well_formed() {
+        let result = ScanResult::default();
+        let mut buf = Vec::new();
+        print(&result, &mut buf).unwrap();
+        let rendered = String::from_utf8(buf).unwrap();
+        // Header, separator, and Total row should all be present even when
+        // there's nothing to count.
+        assert!(rendered.contains("Language"));
+        assert!(rendered.contains("Files"));
+        assert!(rendered.contains("Lines"));
+        assert!(rendered.contains("Total"));
+        assert!(rendered.contains('0'));
+    }
+
+    #[test]
+    fn footer_appears_when_files_were_skipped_or_errored() {
+        let result = ScanResult {
+            skipped_binary: 3,
+            read_errors: 2,
+            ..Default::default()
+        };
+        let mut buf = Vec::new();
+        print(&result, &mut buf).unwrap();
+        let rendered = String::from_utf8(buf).unwrap();
+        assert!(rendered.contains("Skipped 3 binary file(s)"));
+        assert!(rendered.contains("2 read error(s)"));
+    }
+
+    #[test]
+    fn footer_is_omitted_when_nothing_was_skipped() {
+        let mut result = ScanResult::default();
+        result.per_language.insert(
+            Language::Rust,
+            LanguageStats {
+                files: 1,
+                lines: 10,
+            },
+        );
+        let mut buf = Vec::new();
+        print(&result, &mut buf).unwrap();
+        let rendered = String::from_utf8(buf).unwrap();
+        assert!(!rendered.contains("Skipped"));
+        assert!(!rendered.contains("read error"));
+    }
+
+    #[test]
+    fn columns_align_widest_language_name_correctly() {
+        let mut result = ScanResult::default();
+        result
+            .per_language
+            .insert(Language::JavaScript, LanguageStats { files: 1, lines: 1 });
+        result
+            .per_language
+            .insert(Language::C, LanguageStats { files: 1, lines: 1 });
+        let mut buf = Vec::new();
+        print(&result, &mut buf).unwrap();
+        let rendered = String::from_utf8(buf).unwrap();
+        // Every data line should be at least as wide as "JavaScript" plus the
+        // two-space gap before the Files column.
+        for line in rendered
+            .lines()
+            .filter(|l| !l.is_empty() && !l.starts_with('-'))
+        {
+            assert!(
+                line.len() >= "JavaScript".len(),
+                "line too short for column alignment: {line:?}"
+            );
+        }
+    }
 }

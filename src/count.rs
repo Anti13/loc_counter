@@ -185,4 +185,71 @@ mod tests {
     fn looks_like_binary_returns_false_for_text() {
         assert!(!looks_like_binary(b"hello world\n"));
     }
+
+    #[test]
+    fn single_newline_byte_is_one_line() {
+        let f = write_tmp(b"\n");
+        assert_eq!(count_file(f.path()).unwrap().lines, 1);
+    }
+
+    #[test]
+    fn consecutive_blank_lines_are_counted() {
+        let f = write_tmp(b"a\n\n\nb\n");
+        assert_eq!(count_file(f.path()).unwrap().lines, 4);
+    }
+
+    #[test]
+    fn crlf_line_endings_count_correctly() {
+        let f = write_tmp(b"a\r\nb\r\nc\r\n");
+        assert_eq!(count_file(f.path()).unwrap().lines, 3);
+    }
+
+    #[test]
+    fn cr_only_line_endings_are_treated_as_one_unterminated_line() {
+        // Old-Mac CR-only line endings are not handled specially; this is a
+        // documented limitation. Lock in the current behavior.
+        let f = write_tmp(b"a\rb\rc");
+        assert_eq!(count_file(f.path()).unwrap().lines, 1);
+    }
+
+    #[test]
+    fn file_just_below_threshold_uses_buffer_path() {
+        let mut data = vec![b'x'; SMALL_FILE_THRESHOLD as usize - 1];
+        data.push(b'\n');
+        let f = write_tmp(&data);
+        assert_eq!(count_file(f.path()).unwrap().lines, 1);
+    }
+
+    #[test]
+    fn file_just_above_threshold_uses_streaming_path() {
+        let mut data = vec![b'x'; SMALL_FILE_THRESHOLD as usize + 1];
+        data.push(b'\n');
+        let f = write_tmp(&data);
+        assert_eq!(count_file(f.path()).unwrap().lines, 1);
+    }
+
+    #[test]
+    fn streaming_path_detects_binary_in_first_chunk() {
+        // > SMALL_FILE_THRESHOLD bytes forces the streaming path; null near
+        // the start triggers the binary heuristic on the first read.
+        let mut data = vec![b'a'; SMALL_FILE_THRESHOLD as usize + 1024];
+        data[100] = 0;
+        let f = write_tmp(&data);
+        assert!(count_file(f.path()).unwrap().binary);
+    }
+
+    #[test]
+    fn null_byte_past_binary_check_window_is_not_flagged() {
+        // Match Git's heuristic: only the first BINARY_CHECK_BYTES are scanned
+        // for nulls. A null past that window must not flag the file as binary.
+        let total_size = SMALL_FILE_THRESHOLD as usize + 1024;
+        let mut data = vec![b'a'; total_size];
+        let null_position = BINARY_CHECK_BYTES + 1024;
+        data[null_position] = 0;
+        let f = write_tmp(&data);
+        assert!(
+            !count_file(f.path()).unwrap().binary,
+            "null at byte {null_position} should not trigger binary detection"
+        );
+    }
 }
