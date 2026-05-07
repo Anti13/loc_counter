@@ -1,0 +1,20 @@
+[package]
+name = "loc_counter"
+version = "0.1.0"
+edition = "2024"
+description = "A small, fast Rust CLI that counts lines of code per language across a project tree."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+bytecount = "0.6"
+clap = { version = "4", features = ["derive"] }
+ignore = "0.4"
+memchr = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
